@@ -1,9 +1,9 @@
-use axum::{extract::{Path, Query, State}, Json};
+use axum::{extract::{Path, Query, State}, http::{HeaderMap, StatusCode}, Json};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::{error::AppError, models::product::{CreateProduct, Product}, state::AppState};
+use crate::{auth::routes::authenticated_user_id, error::AppError, models::product::{CreateProduct, Product}, state::AppState};
 
 #[derive(Debug, Deserialize)]
 pub struct ProductQuery {
@@ -67,18 +67,22 @@ pub async fn get_product(
 
 pub async fn create_product(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(payload): Json<CreateProduct>,
-) -> Result<(axum::http::StatusCode, Json<Product>), AppError> {
+) -> Result<(StatusCode, Json<Product>), AppError> {
+    // Derive seller identity from the verified token. Never accept seller_id
+    // from the request body, because a client could impersonate another seller.
+    let seller_id = authenticated_user_id(&state, &headers).await?;
     payload.validate().map_err(|e| AppError::BadRequest(e.to_string()))?;
 
-    // MVP note: seller_id is temporarily nullable until authenticated seller accounts are wired in.
     let product = sqlx::query_as::<_, Product>(
         r#"INSERT INTO products
-           (title, description, price_kes, category_id, image_url, condition, status)
-           VALUES ($1, $2, $3, $4, $5, $6, 'active')
+           (seller_id, title, description, price_kes, category_id, image_url, condition, status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
            RETURNING id, title, description, price_kes, category_id, image_url,
                      condition, status, created_at"#
     )
+    .bind(seller_id)
     .bind(payload.title.trim())
     .bind(payload.description)
     .bind(payload.price_kes)
@@ -88,5 +92,5 @@ pub async fn create_product(
     .fetch_one(&state.db)
     .await?;
 
-    Ok((axum::http::StatusCode::CREATED, Json(product)))
+    Ok((StatusCode::CREATED, Json(product)))
 }

@@ -37,9 +37,15 @@ The API listens on `http://localhost:8080`.
 - `GET /api/v1/products?q=shirt`
 - `GET /api/v1/products?category_id=<uuid>`
 - `GET /api/v1/products/<uuid>`
-- `POST /api/v1/products`
+- `POST /api/v1/products` (requires `Authorization: Bearer <access_token>`)
 
-Example create request:
+Example create request (include the access token in the Authorization header):
+
+```http
+POST /api/v1/products HTTP/1.1
+Authorization: Bearer <access_token>
+Content-Type: application/json
+```
 
 ```json
 {
@@ -65,8 +71,7 @@ Example create request:
 ## Important MVP limitations
 
 This is a development scaffold, not a production-ready marketplace:
-- Product creation is intentionally unauthenticated for initial API wiring. Do not expose publicly until authentication and seller authorization are implemented.
-- The initial migration has users but no public registration/login routes yet.
+- Product creation requires a valid bearer access token and an active user account. The server assigns `seller_id` from the token; clients cannot choose another seller.
 - No payment collection, escrow, refunds, courier integrations, or money movement is implemented.
 - Do not hold customer funds in an ordinary account. Integrate a licensed payment provider / legally appropriate safeguarded settlement product before accepting real payments.
 - Add rate limiting, request size limits, structured audit logs, secrets management, backups, security review, and automated tests before launch.
@@ -104,4 +109,4 @@ curl -X POST http://localhost:8080/api/v1/auth/otp/verify \
 
 The verify response contains a short-lived access token and a refresh token. Store refresh tokens securely (prefer an HttpOnly, Secure, SameSite cookie when using a browser frontend); do not put them in localStorage. Logout revokes the supplied refresh token. Access JWTs remain valid until their short expiry, so clients should discard them immediately on logout.
 
-**Important pre-launch work:** add per-IP throttling/WAF controls, abuse monitoring and SMS cost controls; integrate a real provider; add authenticated route middleware and require a verified seller identity before product creation. The current product `POST` endpoint remains a development endpoint and is not protected by this authentication module yet.
+**Important pre-launch work:** add per-IP throttling/WAF controls, abuse monitoring and SMS cost controls; integrate a real provider; apply the same authenticated-user check to every future seller write route; add seller verification and moderation controls before public launch. Product creation is now protected, but the rest of the marketplace write workflows have not been implemented yet.

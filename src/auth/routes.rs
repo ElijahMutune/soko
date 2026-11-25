@@ -327,23 +327,46 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && bool::from(a.ct_eq(b))
 }
 
+/// Validates a bearer access token and confirms that its account is still active.
+/// Use this helper on every protected endpoint; a valid JWT alone is not enough
+/// because an account may have been suspended after the token was issued.
+pub async fn authenticated_user_id(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Uuid, AppError> {
+    let bearer = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .ok_or(AppError::InvalidCredentials)?;
+
+    let user_id = verify_access_token(bearer)?;
+    let account_status: Option<String> = sqlx::query_scalar(
+        "SELECT account_status FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?;
+
+    match account_status.as_deref() {
+        Some("active") => Ok(user_id),
+        Some(_) => Err(AppError::Forbidden),
+        None => Err(AppError::InvalidCredentials),
+    }
+}
+
 pub async fn me(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<UserResponse>, AppError> {
-    let bearer = headers.get(axum::http::header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .ok_or(AppError::InvalidCredentials)?;
-    let user_id = verify_access_token(bearer)?;
-    let row = sqlx::query("SELECT id, phone_e164, public_username, account_status FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_optional(&state.db)
-        .await?
-        .ok_or(AppError::InvalidCredentials)?;
-    if row.try_get::<String, _>("account_status")? != "active" {
-        return Err(AppError::Forbidden);
-    }
+    let user_id = authenticated_user_id(&state, &headers).await?;
+    let row = sqlx::query(
+        "SELECT id, phone_e164, public_username FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_one(&state.db)
+    .await?;
+
     Ok(Json(UserResponse {
         id: row.try_get("id")?,
         phone: row.try_get("phone_e164")?,
