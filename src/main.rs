@@ -1,13 +1,15 @@
 mod auth;
+mod ai;
+mod uploads;
 mod models;
 mod routes;
 mod state;
 mod error;
 
-use axum::{http::{header, HeaderValue, Method}, routing::{get, post}, Router};
+use axum::{extract::DefaultBodyLimit, http::{header, HeaderValue, Method}, routing::{delete, get, post, put}, Router};
 use sqlx::postgres::PgPoolOptions;
 use std::{env, net::SocketAddr, sync::Arc};
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
+use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{auth::{routes as auth_routes, sms::build_sms_sender}, routes::{health, products, categories}, state::AppState};
@@ -33,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let allowed_origins: Vec<HeaderValue> = origins.split(',').filter_map(|s| s.trim().parse().ok()).collect();
     let cors = CorsLayer::new()
         .allow_origin(allowed_origins)
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE, Method::OPTIONS])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
     let app = Router::new()
@@ -46,6 +48,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/v1/categories", get(categories::list_categories))
         .route("/api/v1/products", get(products::list_products).post(products::create_product))
         .route("/api/v1/products/:id", get(products::get_product))
+        .route("/api/v1/products/:id/images", post(products::add_product_images))
+        .route("/api/v1/products/:id/images/reorder", put(products::reorder_product_images))
+        .route("/api/v1/products/:id/images/:image_id", delete(products::remove_product_image))
+        .route("/api/v1/uploads/images", post(uploads::upload_image))
+        .route("/api/v1/uploads/images/batch", post(uploads::upload_images_batch))
+        .route("/api/v1/ai/listing-suggestions", post(ai::suggest_listing))
+        .nest_service("/media", ServeDir::new("uploads"))
+        .layer(DefaultBodyLimit::max(33 * 1024 * 1024))
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http());

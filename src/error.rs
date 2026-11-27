@@ -17,6 +17,12 @@ pub enum AppError {
     Forbidden,
     #[error("Service unavailable")]
     ServiceUnavailable,
+    #[error("Image storage is not configured for this environment")]
+    StorageUnavailable,
+    #[error("AI listing suggestions are not configured")]
+    AiUnavailable,
+    #[error("External AI service request failed")]
+    ExternalService,
 }
 
 impl IntoResponse for AppError {
@@ -32,6 +38,9 @@ impl IntoResponse for AppError {
             AppError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "Too many requests. Try again later.".to_string()),
             AppError::Forbidden => (StatusCode::FORBIDDEN, "This account cannot sign in".to_string()),
             AppError::ServiceUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "Authentication service is not configured".to_string()),
+            AppError::StorageUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "Image storage is not configured for this environment".to_string()),
+            AppError::AiUnavailable => (StatusCode::SERVICE_UNAVAILABLE, "AI listing suggestions are not configured".to_string()),
+            AppError::ExternalService => (StatusCode::BAD_GATEWAY, "AI listing suggestion request failed".to_string()),
         };
         (status, Json(json!({ "error": message }))).into_response()
     }

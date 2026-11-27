@@ -25,6 +25,10 @@ pub struct CreateProduct {
     #[validate(range(min = 1, max = 100_000_000))]
     pub price_kes: i64,
     pub category_id: Option<Uuid>,
+    /// ID returned by POST /api/v1/uploads/images. The image must belong to this seller.
+    pub image_id: Option<Uuid>,
+    /// Up to 8 uploaded image IDs, in gallery order. The first becomes the cover.
+    pub image_ids: Option<Vec<Uuid>>,
     #[validate(url)]
     pub image_url: Option<String>,
     #[validate(length(min = 2, max = 30))]
